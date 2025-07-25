@@ -1,50 +1,41 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+import plotly.graph_objects as go
 
 st.set_page_config(page_title="시도별 자살률 분석", layout="wide")
 st.title("📊 대한민국 시도별 자살률 분석 (1998~2023)")
 
-# 엑셀 파일 업로드
 uploaded_file = st.file_uploader("📂 자살률 통계 파일 업로드 (.xlsx)", type="xlsx")
 
 if uploaded_file:
-    xls = pd.ExcelFile(uploaded_file, engine="openpyxl")
-    df = xls.parse("데이터")
+    df = pd.read_excel(uploaded_file, sheet_name="데이터", engine="openpyxl")
 
-    # 유효한 연도 리스트 추출 (숫자형 컬럼만)
-    year_cols = [str(c) for c in df.columns if isinstance(c, int) or str(c).isdigit()]
-    
-    # 📌 시도 선택
-    st.subheader("📈 특정 시도 자살률 추이 (남/여/계 비교)")
-    selected_sido = st.selectbox("시도 선택", options=df["시군구별"].dropna().unique())
+    # 시군구 리스트 필터링
+    region_options = df["시군구별"].dropna().unique()
+    selected_region = st.selectbox("📍 시도 선택", options=region_options, index=0)
 
-    # 선택된 시도의 남/여/계 행 필터링
-    line_df = df[(df["시군구별"] == selected_sido) & (df["성별"].isin(["계", "남자", "여자"]))]
+    # 성별 필터
+    filtered = df[(df["시군구별"] == selected_region) & (df["성별"].isin(["남자", "여자", "계"]))]
 
-    # 연도별 값만 추출하고 전치
-    trend_df = line_df[year_cols].transpose()
-    trend_df.columns = line_df["성별"].values
-    trend_df.index = trend_df.index.astype(int)  # 연도 정수형
+    # 연도 컬럼만 추출
+    year_cols = [col for col in filtered.columns if str(col).isdigit()]
+    trend = filtered[year_cols]
+    trend.index = filtered["성별"].values
+    trend = trend.transpose()  # 연도 기준
 
-    # Plotly 그래프
-    st.line_chart(trend_df)
+    # Plotly 꺾은선 그래프
+    st.subheader(f"📈 {selected_region}의 남/여/계 자살률 추이")
 
-    # 연도 선택 → 바 차트 시각화
-    st.subheader("📊 연도별 시도 자살률 비교")
-    selected_year = st.selectbox("📅 자살률 비교할 연도 선택", options=year_cols[::-1], index=0)
+    fig = go.Figure()
+    for gender in trend.columns:
+        fig.add_trace(go.Scatter(x=trend.index, y=trend[gender],
+                                 mode="lines+markers", name=gender))
 
-    df_filtered = df[(df["성별"] == "계") & (df["시군구별"].notna())].copy()
-    df_filtered["시도"] = df_filtered["시군구별"]
-    map_data = df_filtered[["시도", selected_year]].copy()
-    map_data.rename(columns={selected_year: "자살률"}, inplace=True)
+    fig.update_layout(title=f"{selected_region} 성별 자살률 추이 (1998~2023)",
+                      xaxis_title="연도", yaxis_title="자살률 (명/10만명)",
+                      legend_title="성별")
 
-    fig = px.bar(map_data.sort_values("자살률", ascending=False),
-                 x="시도", y="자살률",
-                 labels={"자살률": "자살률 (명/10만명)", "시도": "시도"},
-                 title=f"{selected_year}년 시도별 자살률 (인구 10만 명당)")
-    fig.update_layout(xaxis_tickangle=-45)
     st.plotly_chart(fig)
 
 else:
-    st.warning("왼쪽 사이드바에서 자살률 통계 엑셀 파일을 업로드해주세요.")
+    st.info("자살률 통계 엑셀 파일을 업로드해주세요.")
