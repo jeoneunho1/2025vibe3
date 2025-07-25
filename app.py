@@ -38,16 +38,17 @@ for bm in st.session_state.bookmarks:
         icon=folium.Icon(color="blue", icon="info-sign")
     ).add_to(m)
 
-# folium 지도 표시 + 클릭 위치
+# 지도 출력 + 클릭 좌표 얻기
 map_data = st_folium(m, width=1000, height=600, returned_objects=["last_clicked"])
 
+# 클릭 좌표 표시
 if map_data and map_data["last_clicked"]:
     lat = map_data["last_clicked"]["lat"]
     lon = map_data["last_clicked"]["lng"]
     st.session_state.clicked_location = (lat, lon)
     st.info(f"🖱️ 클릭한 위치의 위도: `{lat:.6f}`, 경도: `{lon:.6f}`")
 
-# 사이드바: 북마크 추가
+# 👉 북마크 추가 폼
 with st.sidebar.form("bookmark_form"):
     st.subheader("📌 북마크 추가")
     name = st.text_input("장소 이름")
@@ -55,7 +56,7 @@ with st.sidebar.form("bookmark_form"):
     lat = st.number_input("위도", value=lat_default, format="%.6f")
     lon = st.number_input("경도", value=lon_default, format="%.6f")
     desc = st.text_area("설명", height=80)
-    submitted = st.form_submit_button("추가하기")
+    submitted = st.form_submit_button("추가하기")  # ✅ 이 줄이 필수
 
     if submitted and name:
         new_entry = {"이름": name, "위도": lat, "경도": lon, "설명": desc}
@@ -63,21 +64,21 @@ with st.sidebar.form("bookmark_form"):
         pd.DataFrame(st.session_state.bookmarks).to_csv(SAVE_FILE, index=False)
         st.success(f"✅ '{name}' 북마크가 저장되었습니다!")
 
-# ✅ 북마크 삭제 기능
+# 👉 북마크 삭제 폼
 with st.sidebar.form("delete_form"):
     st.subheader("🗑️ 북마크 삭제")
     bookmark_names = [bm["이름"] for bm in st.session_state.bookmarks]
     if bookmark_names:
         selected_to_delete = st.selectbox("삭제할 북마크 선택", bookmark_names)
-        delete = st.form_submit_button("삭제하기")
+        delete = st.form_submit_button("삭제하기")  # ✅ 이 줄이 필수
         if delete:
             st.session_state.bookmarks = [bm for bm in st.session_state.bookmarks if bm["이름"] != selected_to_delete]
             pd.DataFrame(st.session_state.bookmarks).to_csv(SAVE_FILE, index=False)
             st.success(f"❌ '{selected_to_delete}' 북마크가 삭제되었습니다.")
     else:
-        st.info("삭제할 북마크가 없습니다.")
+        st.write("저장된 북마크가 없습니다.")
 
-# 북마크 목록 보기
+# 북마크 목록 표시
 with st.expander("📋 북마크 목록 보기"):
     if st.session_state.bookmarks:
         st.dataframe(pd.DataFrame(st.session_state.bookmarks))
