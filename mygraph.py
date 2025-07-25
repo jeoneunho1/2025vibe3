@@ -4,54 +4,87 @@ import plotly.graph_objects as go
 import plotly.express as px
 
 st.set_page_config(page_title="시도별 자살률 분석", layout="wide")
-st.title("📊 대한민국 시도별 자살률 분석 (1998~2023)")
+st.title("📊 대한민국 시도별 자살률 분석")
 
 uploaded_file = st.file_uploader("📂 자살률 통계 파일 업로드 (.xlsx)", type="xlsx")
 
 if uploaded_file:
-    # 엑셀 데이터 읽기
     df = pd.read_excel(uploaded_file, sheet_name="데이터", engine="openpyxl")
 
-    # 📍 시도 선택
+    # 연도 컬럼 확인
+    year_cols = [str(col) for col in df.columns if str(col).isdigit()]
+    
+    # -------------------------------
+    # 📈 성별 자살률 추이
+    # -------------------------------
+    st.subheader("📈 시도별 성별 자살률 추이")
     region_options = df["시군구별"].dropna().unique()
-    selected_region = st.selectbox("📍 시도 선택", options=region_options, index=0)
+    selected_region = st.selectbox("📍 시도 선택", options=region_options)
 
-    # 📈 꺾은선 그래프 - 남자/여자/계
-    st.subheader(f"📈 {selected_region}의 성별 자살률 추이")
+    gender_filtered = df[(df["시군구별"] == selected_region) & (df["성별"].isin(["남자", "여자", "계"]))]
+    trend_df = gender_filtered[year_cols].copy()
+    trend_df.index = gender_filtered["성별"].values
+    trend_df = trend_df.transpose()
 
-    filtered = df[(df["시군구별"] == selected_region) & (df["성별"].isin(["남자", "여자", "계"]))]
-    year_cols = [col for col in filtered.columns if str(col).isdigit()]
-    trend = filtered[year_cols]
-    trend.index = filtered["성별"].values
-    trend = trend.transpose()  # 연도별로 전치
+    fig = go.Figure()
+    for gender in trend_df.columns:
+        fig.add_trace(go.Scatter(x=trend_df.index, y=trend_df[gender],
+                                 mode="lines+markers", name=gender))
+    fig.update_layout(title=f"{selected_region} 성별 자살률 추이 (1998~2023)",
+                      xaxis_title="연도", yaxis_title="자살률 (명/10만명)")
+    st.plotly_chart(fig)
 
-    fig_line = go.Figure()
-    for gender in trend.columns:
-        fig_line.add_trace(go.Scatter(x=trend.index, y=trend[gender],
-                                      mode="lines+markers", name=gender))
+    # -------------------------------
+    # 📊 시군구 자살률 막대 그래프
+    # -------------------------------
+    st.subheader("📊 특정 연도 시군구 자살률 순위")
+    selected_year = st.selectbox("연도 선택", options=year_cols[::-1], index=0)
 
-    fig_line.update_layout(title=f"{selected_region} 성별 자살률 추이 (1998~2023)",
-                           xaxis_title="연도", yaxis_title="자살률 (명/10만명)",
-                           legend_title="성별")
+    df_total = df[(df["성별"] == "계") & (df["시군구별"].notna())].copy()
+    df_total["시도"] = df_total["시군구별"]
+    bar_data = df_total[["시도", selected_year]].copy()
+    bar_data.rename(columns={selected_year: "자살률"}, inplace=True)
 
-    st.plotly_chart(fig_line)
-
-    # 📊 막대 그래프 - 전체 시도 자살률 비교
-    st.subheader("📊 연도별 시도 자살률 비교")
-    year_list = [str(y) for y in range(1998, 2024)]
-    selected_year = st.selectbox("📅 자살률 비교할 연도 선택", options=year_list[::-1], index=0)
-
-    df_filtered = df[(df["성별"] == "계") & (df["시군구별"].notna())].copy()
-    df_filtered["시도"] = df_filtered["시군구별"]
-    map_data = df_filtered[["시도", selected_year]].copy()
-    map_data.rename(columns={selected_year: "자살률"}, inplace=True)
-
-    fig_bar = px.bar(map_data.sort_values("자살률", ascending=False),
+    fig_bar = px.bar(bar_data.sort_values("자살률", ascending=False),
                      x="시도", y="자살률",
-                     labels={"자살률": "자살률 (명/10만명)", "시도": "시도"},
-                     title=f"{selected_year}년 시도별 자살률 (인구 10만 명당)")
+                     title=f"{selected_year}년 시군구별 자살률 순위",
+                     labels={"자살률": "자살률 (명/10만명)", "시도": "시도"})
     fig_bar.update_layout(xaxis_tickangle=-45)
     st.plotly_chart(fig_bar)
 
+    # -------------------------------
+    # 📉 자살률 감소 추이 (2003 → 2023)
+    # -------------------------------
+    st.subheader("📉 자살률 감소량 순위 (2003 → 2023)")
+
+    df_total["2003"] = pd.to_numeric(df_total["2003"], errors="coerce")
+    df_total["2023"] = pd.to_numeric(df_total["2023"], errors="coerce")
+    df_total["감소량"] = df_total["2003"] - df_total["2023"]
+
+    decrease_df = df_total[["시도", "감소량"]].dropna().sort_values(by="감소량", ascending=False)
+
+    fig_decrease = px.bar(decrease_df,
+                          x="시도", y="감소량",
+                          title="2003 → 2023 자살률 감소량 상위 지역",
+                          labels={"감소량": "자살률 감소량"})
+    fig_decrease.update_layout(xaxis_tickangle=-45)
+    st.plotly_chart(fig_decrease)
+
+    # -------------------------------
+    # 🔍 전국 평균 대비 비교
+    # -------------------------------
+    st.subheader("🔍 전국 평균 자살률과 비교")
+
+    national_avg = df_total[year_cols].mean()
+    selected_region_row = df_total[df_total["시도"] == selected_region].iloc[0]
+    comparison_data = pd.DataFrame({
+        "연도": year_cols,
+        "전국 평균": national_avg.values,
+        selected_region: selected_region_row[year_cols].values
+    })
+
+    comparison_data = comparison_data.set_index("연도")
+    st.line_chart(comparison_data)
+
 else:
-    st.info("자살률 통계 엑셀 파일을 업로드해주세요.")
+    st.info("먼저 자살률 통계 엑셀 파일을 업로드해주세요. (.xlsx)")
